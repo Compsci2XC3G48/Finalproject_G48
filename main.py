@@ -45,8 +45,10 @@ class Dgraph():
         return total/2
     
 def a_star(graph:Dgraph, source, destination, heuristic:dict):
-    # Priority queue: stores tuples (f, g, current_node)
+    # Priority queue: stores tuples (f, g, current_node) 
+    # Will sort by the first value in the tuple
     open_set = []
+    #Heapify the value with min heap
     heapq.heappush(open_set, (heuristic[source], 0, source))
     
     # cost_so_far holds the best-known cost to reach each node
@@ -55,7 +57,7 @@ def a_star(graph:Dgraph, source, destination, heuristic:dict):
     predecessor = {source: None}
     
     while open_set:
-        f, current_cost, current_node = heapq.heappop(open_set)
+        _, current_cost, current_node = heapq.heappop(open_set)
         
         # If we reached the destination, reconstruct and return the path.
         if current_node == destination:
@@ -63,17 +65,18 @@ def a_star(graph:Dgraph, source, destination, heuristic:dict):
             while current_node is not None:
                 path.append(current_node)
                 current_node = predecessor[current_node]
-            return predecessor, path[::-1]  # Reverse the path
+            return predecessor, path[::-1]  # Reverse the path to make it left to right
         
-        # Iterate over neighbors of the current node.
+        # Iterates through all neighbors of the current node.
         for neighbor in graph.connected_nodes(current_node):
             new_cost = current_cost + graph.weight[(current_node, neighbor)]
             # If neighbor is not visited or a better cost is found, update it.
             if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
                 cost_so_far[neighbor] = new_cost
                 predecessor[neighbor] = current_node
-                # f = g (cost so far) + h (heuristic estimate)
-                f_new = new_cost + heuristic.get(neighbor, float('inf'))
+                # updates the f
+                # f is used for choose a better possible nodes for possible shortest path that improves the efficiency
+                f_new = new_cost + heuristic.get(neighbor, float('inf')) #if exiest key neihbor choose it else return infinity
                 heapq.heappush(open_set, (f_new, new_cost, neighbor))
     
     # If destination is unreachable, return the predecessor dictionary and an empty path.
