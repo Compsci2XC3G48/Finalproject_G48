@@ -1,4 +1,6 @@
+import csv
 import heapq
+import math
 
 class Dgraph():
     def __init__(self, nodes):
@@ -82,23 +84,70 @@ def a_star(graph:Dgraph, source, destination, heuristic:dict):
     # If destination is unreachable, return the predecessor dictionary and an empty path.
     return predecessor, []
 
-# Example usage:
+def euclidean_distance(pos1, pos2):
+    # Calculate the straight line distence
+    return math.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
+
+
+def load_stations(file_name):
+    station_positions = {}
+    #opens the CSV file with proper handling of newlines and character encoding
+    with open(file_name, newline='', encoding='utf-8') as csvfile:
+        #create the reader 
+        reader = csv.DictReader(csvfile)
+        #read each entity and store the core attribute
+        for row in reader:
+            # Convert station id to int and latitude/longitude to float.
+            station_id = int(row['id'])
+            lat = float(row['latitude'])
+            lon = float(row['longitude'])
+            station_positions[station_id] = (lat, lon)
+    return station_positions
+
+def load_connections(file_name):
+    connections = []
+    #opens the CSV file with proper handling of newlines and character encoding
+    with open(file_name, newline='', encoding='utf-8') as csvfile:
+        #create the reader 
+        reader = csv.DictReader(csvfile)
+        #read each entity and store the core attribute
+        for row in reader:
+            station1 = int(row['station1'])
+            station2 = int(row['station2'])
+            weight = float(row['time'])
+            connections.append((station1, station2, weight))
+    return connections
+
+
+def build_graph(stations_file, connections_file):
+    #Read the csv data base
+    station_positions = load_stations(stations_file)
+    station_connections = load_connections(connections_file)
+    
+    # Number of nodes is determined by the maximum station id plus one.
+    num_nodes = max(station_positions.keys()) + 1
+    graph = Dgraph(num_nodes)
+    
+    # Add edges from connections.
+    for station1, station2, weight in station_connections:
+        graph.add_edge(station1, station2, weight)
+    
+    return graph, station_positions
+
+
+def heuristic_function(station_positions:dict, destination):
+    heuristic = {}
+    dest_pos = station_positions[destination]
+    for station, pos in station_positions.items():
+        heuristic[station] = euclidean_distance(pos, dest_pos)
+    return heuristic
+
+def experiment_part_5 ():
+    stations_file = "london_stations.csv"
+    connections_file = "london_connections.csv"
+
 if __name__ == "__main__":
-    # Create a graph with 5 nodes
-    g = Dgraph(5)
-    
-    # Add edges (undirected)
-    g.add_edge(0, 1, 2)
-    g.add_edge(0, 2, 4)
-    g.add_edge(1, 2, 1)
-    g.add_edge(1, 3, 7)
-    g.add_edge(2, 4, 3)
-    g.add_edge(3, 4, 1)
-    
-    # Define a heuristic function as a dictionary.
-    # For this example, the heuristic values are arbitrarily chosen.
-    heuristic = {0: 7, 1: 6, 2: 2, 3: 1, 4: 0}
-    
-    pred, path = a_star(g, 0, 4, heuristic)
-    print("Predecessors:", pred)
-    print("Shortest path from 0 to 4:", path)
+    # print(load_connections("london_connections.csv"))
+    # print(load_stations("london_stations.csv"))
+    print(heuristic_function(load_stations("london_stations.csv"),50))
+    experiment_part_5()
