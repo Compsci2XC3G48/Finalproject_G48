@@ -151,3 +151,99 @@ if __name__ == "__main__":
     # print(load_stations("london_stations.csv"))
     print(heuristic_function(load_stations("london_stations.csv"),50))
     experiment_part_5()
+
+#Part 2 starts from here
+#Part 2.1:
+def dijkstra(graph, source, k):
+    """
+    Implementation of Dijkstra's algorithm variation where each node can be relaxed at most k times.
+
+    Returns:
+        distances: Dictionary mapping each node to its shortest distance from source
+        paths: Dictionary mapping each node to the path from source
+    """
+    # Initialize distances with infinity for all nodes except the source
+    distances = {node: float('infinity') for node in graph}
+    distances[source] = 0
+    
+    # Initialize paths dictionary to store the shortest path to each node
+    paths = {node: [] for node in graph}
+    paths[source] = [source]
+    
+    # Initialize a dictionary to track relaxation count for each node
+    relaxation_count = {node: 0 for node in graph}
+    
+    # Initialize priority queue with (distance, node)
+    priority_queue = [(0, source)]
+    
+    while priority_queue:
+        current_distance, current_node = heapq.heappop(priority_queue)
+        
+        # Skip if we've found a better path since this entry was added
+        if current_distance > distances[current_node]:
+            continue
+            
+        # Process neighbors
+        for neighbor, weight in graph[current_node].items():
+            # Skip if node has already been relaxed k times
+            if relaxation_count[neighbor] >= k:
+                continue
+                
+            distance = current_distance + weight
+            
+            # If we found a shorter path, update distance and path
+            if distance < distances[neighbor]:
+                distances[neighbor] = distance
+                paths[neighbor] = paths[current_node] + [neighbor]
+                relaxation_count[neighbor] += 1
+                heapq.heappush(priority_queue, (distance, neighbor))
+    
+    return distances, paths
+
+# Part 2.2:
+def bellman_ford(graph, source, k):
+    """
+    Implementation of Bellman-Ford algorithm variation where each node can be relaxed at most k times.
+
+    Returns:
+        distances: Dictionary mapping each node to its shortest distance from source
+        paths: Dictionary mapping each node to the path from source
+    """
+    # Initialize distances with infinity for all nodes except the source
+    distances = {node: float('infinity') for node in graph}
+    distances[source] = 0
+    
+    # Initialize paths dictionary to store the shortest path to each node
+    paths = {node: [] for node in graph}
+    paths[source] = [source]
+    
+    # Initialize a dictionary to track relaxation count for each node
+    relaxation_count = {node: 0 for node in graph}
+    
+    # Get all edges from the graph
+    edges = []
+    for node in graph:
+        for neighbor, weight in graph[node].items():
+            edges.append((node, neighbor, weight))
+    
+    # Relax all edges repeatedly
+    for _ in range(len(graph) - 1):  # In the worst case, we need N-1 iterations
+        no_changes = True
+        for u, v, weight in edges:
+            # Skip if node has already been relaxed k times
+            if relaxation_count[v] >= k:
+                continue
+                
+            if distances[u] != float('infinity') and distances[u] + weight < distances[v]:
+                distances[v] = distances[u] + weight
+                paths[v] = paths[u] + [v]
+                relaxation_count[v] += 1
+                no_changes = False
+        
+        # If no changes were made in this iteration, we can break early
+        if no_changes:
+            break
+    
+    return distances, paths
+
+# Part 2.3:
