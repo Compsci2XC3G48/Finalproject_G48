@@ -1,6 +1,11 @@
 import csv
 import heapq
 import math
+import time
+import random
+import matplotlib.pyplot as plt
+import numpy as np
+from collections import defaultdict
 
 class Dgraph():
     def __init__(self, nodes):
@@ -247,3 +252,194 @@ def bellman_ford(graph, source, k):
     return distances, paths
 
 # Part 2.3:
+def generate_random_graph(n, density=0.5):
+    """
+    Generate a random graph with n nodes and approximately density*n*(n-1) edges.
+        
+    Returns:
+        graph: Dictionary representation of the graph
+    """
+    graph = {i: {} for i in range(n)}
+    
+    # Number of possible edges in a directed graph is n*(n-1)
+    possible_edges = n * (n - 1)
+    target_edges = int(possible_edges * density)
+    
+    edges_added = 0
+    while edges_added < target_edges:
+        u = random.randint(0, n-1)
+        v = random.randint(0, n-1)
+        
+        # Skip self-loops
+        if u == v or v in graph[u]:
+            continue
+            
+        # Add edge with random weight (1-10)
+        weight = random.randint(1, 10)
+        graph[u][v] = weight
+        edges_added += 1
+    
+    return graph
+
+def measure_performance(graph, source, k, algorithm):
+    """
+    Measure the performance of the specified algorithm.
+
+    Returns:
+        execution_time: Time taken to execute the algorithm (in seconds)
+        accuracy: Percentage of nodes that have a valid path
+    """
+    start_time = time.time()
+    distances, paths = algorithm(graph, source, k)
+    end_time = time.time()
+    
+    # Measure accuracy (percentage of nodes with valid paths)
+    reachable_nodes = sum(1 for d in distances.values() if d != float('infinity'))
+    accuracy = reachable_nodes / len(graph) * 100
+    
+    return end_time - start_time, accuracy
+
+def draw_plot(x_values, dijkstra_values, bellman_values, x_label, y_label, title):
+    """
+    Draw a plot comparing Dijkstra and Bellman-Ford performance.
+
+    """
+    x = np.array(x_values)
+    
+    # Create the figure with specified size
+    fig = plt.figure(figsize=(20, 8))
+    
+    # Plot Dijkstra's algorithm results
+    plt.plot(x, dijkstra_values, 'b-o', label="Dijkstra's Algorithm")
+    
+    # Plot Bellman-Ford algorithm results
+    plt.plot(x, bellman_values, 'g-s', label="Bellman-Ford Algorithm")
+    
+    # Calculate and show mean lines
+    dijkstra_mean = np.mean(dijkstra_values)
+    bellman_mean = np.mean(bellman_values)
+    
+    plt.axhline(dijkstra_mean, color="blue", linestyle="--", label="Dijkstra Avg")
+    plt.axhline(bellman_mean, color="green", linestyle="--", label="Bellman-Ford Avg")
+    
+    # Add labels and title
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.title(title)
+    plt.grid(True)
+    plt.legend()
+    
+    # Display the plot
+    plt.show()
+
+def run_experiment():
+    """
+    Run the performance analysis experiment comparing both algorithms.
+    """
+    # Parameters to vary
+    graph_sizes = [10, 50, 100, 200]
+    densities = [0.1, 0.3, 0.5, 0.7]
+    k_values = [1, 3, 5, 10]
+    
+    # Results storage
+    results = {
+        'dijkstra': defaultdict(list),
+        'bellman_ford': defaultdict(list)
+    }
+    
+    # 1. Vary graph size (fixed density=0.5, k=3)
+    print("Experiment 1: Varying Graph Size")
+    for size in graph_sizes:
+        graph = generate_random_graph(size, 0.5)
+        source = 0
+        k = 3
+        
+        dijkstra_time, dijkstra_acc = measure_performance(graph, source, k, dijkstra)
+        bellman_time, bellman_acc = measure_performance(graph, source, k, bellman_ford)
+        
+        results['dijkstra']['size_time'].append(dijkstra_time)
+        results['dijkstra']['size_acc'].append(dijkstra_acc)
+        results['bellman_ford']['size_time'].append(bellman_time)
+        results['bellman_ford']['size_acc'].append(bellman_acc)
+        
+        print(f"Size {size}: Dijkstra {dijkstra_time:.5f}s, {dijkstra_acc:.2f}% | Bellman-Ford {bellman_time:.5f}s, {bellman_acc:.2f}%")
+    
+    # 2. Vary graph density (fixed size=100, k=3)
+    print("\nExperiment 2: Varying Graph Density")
+    for density in densities:
+        graph = generate_random_graph(100, density)
+        source = 0
+        k = 3
+        
+        dijkstra_time, dijkstra_acc = measure_performance(graph, source, k, dijkstra)
+        bellman_time, bellman_acc = measure_performance(graph, source, k, bellman_ford)
+        
+        results['dijkstra']['density_time'].append(dijkstra_time)
+        results['dijkstra']['density_acc'].append(dijkstra_acc)
+        results['bellman_ford']['density_time'].append(bellman_time)
+        results['bellman_ford']['density_acc'].append(bellman_acc)
+        
+        print(f"Density {density}: Dijkstra {dijkstra_time:.5f}s, {dijkstra_acc:.2f}% | Bellman-Ford {bellman_time:.5f}s, {bellman_acc:.2f}%")
+    
+    # 3. Vary k value (fixed size=100, density=0.5)
+    print("\nExperiment 3: Varying k Value")
+    for k in k_values:
+        graph = generate_random_graph(100, 0.5)
+        source = 0
+        
+        dijkstra_time, dijkstra_acc = measure_performance(graph, source, k, dijkstra)
+        bellman_time, bellman_acc = measure_performance(graph, source, k, bellman_ford)
+        
+        results['dijkstra']['k_time'].append(dijkstra_time)
+        results['dijkstra']['k_acc'].append(dijkstra_acc)
+        results['bellman_ford']['k_time'].append(bellman_time)
+        results['bellman_ford']['k_acc'].append(bellman_acc)
+        
+        print(f"k={k}: Dijkstra {dijkstra_time:.5f}s, {dijkstra_acc:.2f}% | Bellman-Ford {bellman_time:.5f}s, {bellman_acc:.2f}%")
+    
+    # Display four separate plots
+    
+    # Plot 1: Time vs Graph Size
+    draw_plot(
+        graph_sizes,
+        results['dijkstra']['size_time'],
+        results['bellman_ford']['size_time'],
+        "Graph Size (nodes)",
+        "Execution Time (s)",
+        "Execution Time vs Graph Size (k=3, density=0.5)"
+    )
+    
+    # Plot 2: Time vs Graph Density
+    draw_plot(
+        densities,
+        results['dijkstra']['density_time'],
+        results['bellman_ford']['density_time'],
+        "Graph Density",
+        "Execution Time (s)",
+        "Execution Time vs Graph Density (size=100, k=3)"
+    )
+    
+    # Plot 3: Time vs k Value
+    draw_plot(
+        k_values,
+        results['dijkstra']['k_time'],
+        results['bellman_ford']['k_time'],
+        "k Value",
+        "Execution Time (s)",
+        "Execution Time vs k Value (size=100, density=0.5)"
+    )
+    
+    # Plot 4: Accuracy vs k Value
+    draw_plot(
+        k_values,
+        results['dijkstra']['k_acc'],
+        results['bellman_ford']['k_acc'],
+        "k Value",
+        "Accuracy (%)",
+        "Path Discovery Accuracy vs k Value (size=100, density=0.5)"
+    )
+
+# Function call
+if __name__ == "__main__":
+    run_experiment()
+# Part 2 ends here
