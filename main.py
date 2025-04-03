@@ -5,7 +5,7 @@ import time
 import random
 import matplotlib.pyplot as plt
 import numpy as np
-from collections import defaultdict
+from collections import defaultdict, deque
 
 class Dgraph():
     def __init__(self, nodes):
@@ -51,112 +51,6 @@ class Dgraph():
         # because it is undirected
         return total/2
     
-def a_star(graph:Dgraph, source, destination, heuristic:dict):
-    # Priority queue: stores tuples (f, g, current_node) 
-    # Will sort by the first value in the tuple
-    open_set = []
-    #Heapify the value with min heap
-    heapq.heappush(open_set, (heuristic[source], 0, source))
-    
-    # cost_so_far holds the best-known cost to reach each node
-    cost_so_far = {source: 0}
-    # predecessor dictionary to reconstruct the path
-    predecessor = {source: None}
-    
-    while open_set:
-        _, current_cost, current_node = heapq.heappop(open_set)
-        
-        # If we reached the destination, reconstruct and return the path.
-        if current_node == destination:
-            path = []
-            while current_node is not None:
-                path.append(current_node)
-                current_node = predecessor[current_node]
-            return predecessor, path[::-1]  # Reverse the path to make it left to right
-        
-        # Iterates through all neighbors of the current node.
-        for neighbor in graph.connected_nodes(current_node):
-            new_cost = current_cost + graph.weight[(current_node, neighbor)]
-            # If neighbor is not visited or a better cost is found, update it.
-            if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
-                cost_so_far[neighbor] = new_cost
-                predecessor[neighbor] = current_node
-                # updates the f
-                # f is used for choose a better possible nodes for possible shortest path that improves the efficiency
-                f_new = new_cost + heuristic.get(neighbor, float('inf')) #if exiest key neihbor choose it else return infinity
-                heapq.heappush(open_set, (f_new, new_cost, neighbor))
-    
-    # If destination is unreachable, return the predecessor dictionary and an empty path.
-    return predecessor, []
-
-def euclidean_distance(pos1, pos2):
-    # Calculate the straight line distence
-    return math.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
-
-
-def load_stations(file_name):
-    station_positions = {}
-    #opens the CSV file with proper handling of newlines and character encoding
-    with open(file_name, newline='', encoding='utf-8') as csvfile:
-        #create the reader 
-        reader = csv.DictReader(csvfile)
-        #read each entity and store the core attribute
-        for row in reader:
-            # Convert station id to int and latitude/longitude to float.
-            station_id = int(row['id'])
-            lat = float(row['latitude'])
-            lon = float(row['longitude'])
-            station_positions[station_id] = (lat, lon)
-    return station_positions
-
-def load_connections(file_name):
-    connections = []
-    #opens the CSV file with proper handling of newlines and character encoding
-    with open(file_name, newline='', encoding='utf-8') as csvfile:
-        #create the reader 
-        reader = csv.DictReader(csvfile)
-        #read each entity and store the core attribute
-        for row in reader:
-            station1 = int(row['station1'])
-            station2 = int(row['station2'])
-            weight = float(row['time'])
-            connections.append((station1, station2, weight))
-    return connections
-
-
-def build_graph(stations_file, connections_file):
-    #Read the csv data base
-    station_positions = load_stations(stations_file)
-    station_connections = load_connections(connections_file)
-    
-    # Number of nodes is determined by the maximum station id plus one.
-    num_nodes = max(station_positions.keys()) + 1
-    graph = Dgraph(num_nodes)
-    
-    # Add edges from connections.
-    for station1, station2, weight in station_connections:
-        graph.add_edge(station1, station2, weight)
-    
-    return graph, station_positions
-
-
-def heuristic_function(station_positions:dict, destination):
-    heuristic = {}
-    dest_pos = station_positions[destination]
-    for station, pos in station_positions.items():
-        heuristic[station] = euclidean_distance(pos, dest_pos)
-    return heuristic
-
-def experiment_part_5 ():
-    stations_file = "london_stations.csv"
-    connections_file = "london_connections.csv"
-
-if __name__ == "__main__":
-    # print(load_connections("london_connections.csv"))
-    # print(load_stations("london_stations.csv"))
-    print(heuristic_function(load_stations("london_stations.csv"),50))
-    experiment_part_5()
-
 #Part 2 starts from here
 #Part 2.1:
 def dijkstra(graph, source, k):
@@ -438,8 +332,204 @@ def run_experiment():
         "Accuracy (%)",
         "Path Discovery Accuracy vs k Value (size=100, density=0.5)"
     )
+    
 
-# Function call
+def a_star(graph: Dgraph, start, goal, heuristic):
+    # Min-heap priority queue
+    open_set = []
+    heapq.heappush(open_set, (heuristic.get(start, 0), start))
+
+    # Stores the best-known path
+    came_from = {}
+
+    # gScore: Cost from start node to the current node
+    g_score = {node: float('inf') for node in graph.graph.keys()}
+    g_score[start] = 0
+
+    # fScore: Estimated cost from start to goal via current node
+    f_score = {node: float('inf') for node in graph.graph.keys()}
+    f_score[start] = heuristic.get(start, 0)
+
+    while open_set:
+        _, current = heapq.heappop(open_set)
+
+        if current == goal:
+            # Reconstruct path
+            path = []
+            while current in came_from:
+                path.append(current)
+                current = came_from[current]
+            path.append(start)
+            return path[::-1]  # Reverse to get the correct order
+
+        for neighbor in graph.connected_nodes(current):
+            edge_weight = graph.weight.get((current, neighbor), float('inf'))
+            tentative_g_score = g_score[current] + edge_weight
+
+            if tentative_g_score < g_score[neighbor]:  # Found a better path
+                came_from[neighbor] = current
+                g_score[neighbor] = tentative_g_score
+                f_score[neighbor] = tentative_g_score + heuristic.get(neighbor, 1000)
+
+                if neighbor not in [node[1] for node in open_set]:
+                    heapq.heappush(open_set, (f_score[neighbor], neighbor))
+
+    return []
+
+#dijkstra for part5
+
+def dijkstra2(graph: Dgraph, start, goal):
+    # Min-heap priority queue
+    open_set = []
+    heapq.heappush(open_set, (0, start))  # (cost, node)
+
+    # Stores the best-known path
+    came_from = {}
+
+    # gScore: Cost from start node to the current node
+    g_score = {node: float('inf') for node in graph.graph.keys()}
+    g_score[start] = 0
+
+    while open_set:
+        current_cost, current = heapq.heappop(open_set)
+
+        if current == goal:
+            # Reconstruct path
+            path = []
+            while current in came_from:
+                path.append(current)
+                current = came_from[current]
+            path.append(start)
+            return path[::-1]  # Reverse to get the correct order
+
+        for neighbor in graph.connected_nodes(current):
+            edge_weight = graph.weight.get((current, neighbor), float('inf'))
+            tentative_g_score = current_cost + edge_weight
+
+            if tentative_g_score < g_score[neighbor]:  # Found a better path
+                came_from[neighbor] = current
+                g_score[neighbor] = tentative_g_score
+
+                heapq.heappush(open_set, (tentative_g_score, neighbor))
+
+    return []  # Return empty path if goal was never reached
+
+def euclidean_distance(pos1, pos2):
+    # Calculate the straight line distence
+    return math.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
+
+
+def load_stations(file_name):
+    station_positions = {}
+    #opens the CSV file with proper handling of newlines and character encoding
+    with open(file_name, newline='', encoding='utf-8') as csvfile:
+        #create the reader 
+        reader = csv.DictReader(csvfile)
+        #read each entity and store the core attribute
+        for row in reader:
+            # Convert station id to int and latitude/longitude to float.
+            station_id = int(row['id'])
+            lat = float(row['latitude'])
+            lon = float(row['longitude'])
+            station_positions[station_id] = (lat, lon)
+    return station_positions
+
+def load_connections(file_name):
+    connections = []
+    #opens the CSV file with proper handling of newlines and character encoding
+    with open(file_name, newline='', encoding='utf-8') as csvfile:
+        #create the reader 
+        reader = csv.DictReader(csvfile)
+        #read each entity and store the core attribute
+        for row in reader:
+            station1 = int(row['station1'])
+            station2 = int(row['station2'])
+            line = int(row['line'])
+            connections.append((station1, station2,line))
+    return connections
+
+
+def build_graph(stations_file, connections_file):
+    #Read the csv data base
+    station_positions = load_stations(stations_file)
+    station_connections = load_connections(connections_file)
+    
+    # Number of nodes is determined by the maximum station id plus one.
+    num_nodes = max(station_positions.keys()) + 1
+    graph = Dgraph(num_nodes)
+    
+    # Add edges: compute weight using the Euclidean distance between station positions.
+    for station1, station2 in station_connections:
+        weight = euclidean_distance(station_positions[station1], station_positions[station2]) 
+        graph.add_edge(station1, station2, weight)
+    
+    return graph, station_positions, station_connections
+
+
+def heuristic_function(station_positions:dict, destination):
+    heuristic = {}
+    dest_pos = station_positions[destination]
+    for station, pos in station_positions.items():
+        heuristic[station] = euclidean_distance(pos, dest_pos)
+    return heuristic
+
+def get_reachable_nodes(graph: Dgraph, source):
+    visited = set()
+    queue = deque([source])
+    while queue:
+        node = queue.popleft()
+        if node not in visited:
+            visited.add(node)
+            for neighbor in graph.connected_nodes(node):
+                if neighbor not in visited:
+                    queue.append(neighbor)
+    return visited
+
+
+
+def experiment_part_5 ():
+    stations_file = "london_stations.csv"
+    connections_file = "london_connections.csv"
+    # Build graph and station positions mapping.
+    graph, station_positions = build_graph(stations_file, connections_file)
+    stations = list(station_positions.keys())
+    results = []  # to store tuples: (source, destination, dijkstra_time, astar_time)
+
+    for source in stations:
+        for destination in stations:
+            if source == destination:
+                continue
+
+            # Time Dijkstra (modified to stop when destination is reached)
+            start = time.perf_counter()
+            dijkstra_result = dijkstra2(graph, source, destination)
+            dijkstra_time = time.perf_counter() - start
+
+            # Build heuristic for the current destination
+            heuristic = heuristic_function(station_positions, destination)
+            # Time A* for this pair
+            start = time.perf_counter()
+            astar_result = a_star(graph, source, destination, heuristic)
+            astar_time = time.perf_counter() - start
+
+            results.append({
+                "source": source,
+                "destination": destination,
+                "dijkstra_time": dijkstra_time,
+                "astar_time": astar_time
+            })
+
+            print(f"Source: {source}, Destination: {destination} | "
+                  f"Dijkstra: {dijkstra_time:.6f}s, A*: {astar_time:.6f}s")
+    
+
 if __name__ == "__main__":
-    run_experiment()
-# Part 2 ends here
+    # print(load_connections("london_connections.csv"))
+    # print(load_stations("london_stations.csv"))
+    # print(heuristic_function(load_stations("london_stations.csv"),50))
+    experiment_part_5()
+    # run_experiment()
+
+
+
+
