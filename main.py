@@ -459,7 +459,7 @@ def build_graph(stations_file, connections_file):
     graph = Dgraph(num_nodes)
     
     # Add edges: compute weight using the Euclidean distance between station positions.
-    for station1, station2 in station_connections:
+    for station1, station2,_ in station_connections:
         weight = euclidean_distance(station_positions[station1], station_positions[station2]) 
         graph.add_edge(station1, station2, weight)
     
@@ -473,54 +473,105 @@ def heuristic_function(station_positions:dict, destination):
         heuristic[station] = euclidean_distance(pos, dest_pos)
     return heuristic
 
-def get_reachable_nodes(graph: Dgraph, source):
-    visited = set()
-    queue = deque([source])
-    while queue:
-        node = queue.popleft()
-        if node not in visited:
-            visited.add(node)
-            for neighbor in graph.connected_nodes(node):
-                if neighbor not in visited:
-                    queue.append(neighbor)
-    return visited
+def build_connection_lookup(station_connections):
+    # Build a dictionary mapping (station1, station2) to line number.
+    # Assumes the network is undirected.
+    lookup = {}
+    for station1, station2, line in station_connections:
+        lookup[(station1, station2)] = line
+        lookup[(station2, station1)] = line
+    return lookup
 
-
+def count_transfers(path, connection_lookup):
+    if not path or len(path) < 2:
+        return 0  # No journey, no transfers.
+    
+    # Get the line for the first segment.
+    current_line = connection_lookup.get((path[0], path[1]))
+    transfers = 0
+    # Iterate over segments
+    for i in range(1, len(path) - 1):
+        segment_line = connection_lookup.get((path[i], path[i+1]))
+        if segment_line != current_line:
+            transfers += 1
+            current_line = segment_line
+    return transfers
 
 def experiment_part_5 ():
     stations_file = "london_stations.csv"
     connections_file = "london_connections.csv"
-    # Build graph and station positions mapping.
-    graph, station_positions = build_graph(stations_file, connections_file)
+    
+    # Build graph, station_positions and connections data
+    graph, station_positions, station_connections = build_graph(stations_file, connections_file)
     stations = list(station_positions.keys())
-    results = []  # to store tuples: (source, destination, dijkstra_time, astar_time)
-
+    
+    # Build the connection lookup from station_connections for transfer counting.
+    connection_lookup = build_connection_lookup(station_connections)
+    
+    # Containers to accumulate times for each transfer category.
+    timings = {
+        "same_line": {"dijkstra_times": [], "astar_times": []},
+        "one_transfer": {"dijkstra_times": [], "astar_times": []},
+        "multiple_transfers": {"dijkstra_times": [], "astar_times": []}
+    }
+    
+    # Store detailed results for optional analysis.
+    results = []
+    
     for source in stations:
         for destination in stations:
             if source == destination:
                 continue
-
+            
             # Time Dijkstra (modified to stop when destination is reached)
             start = time.perf_counter()
-            dijkstra_result = dijkstra2(graph, source, destination)
+            dijkstra_path = dijkstra2(graph, source, destination)
             dijkstra_time = time.perf_counter() - start
-
-            # Build heuristic for the current destination
+            
+            # Build heuristic for current destination
             heuristic = heuristic_function(station_positions, destination)
-            # Time A* for this pair
             start = time.perf_counter()
-            astar_result = a_star(graph, source, destination, heuristic)
+            astar_path = a_star(graph, source, destination, heuristic)
             astar_time = time.perf_counter() - start
-
+            
+            # Count the number of transfers on the path (using dijkstra_path, or astar_path if they are equal)
+            transfers = count_transfers(dijkstra_path, connection_lookup)
+            
+            # Categorize based on transfer count:
+            if transfers == 0:
+                category = "same_line"
+            elif transfers == 1:
+                category = "one_transfer"
+            else:
+                category = "multiple_transfers"
+            
+            # Append times to the corresponding category.
+            timings[category]["dijkstra_times"].append(dijkstra_time)
+            timings[category]["astar_times"].append(astar_time)
+            
             results.append({
                 "source": source,
                 "destination": destination,
+                "transfers": transfers,
+                "category": category,
                 "dijkstra_time": dijkstra_time,
                 "astar_time": astar_time
             })
-
-            print(f"Source: {source}, Destination: {destination} | "
+            
+            print(f"Source: {source}, Destination: {destination} | Transfers: {transfers} ({category}) | "
                   f"Dijkstra: {dijkstra_time:.6f}s, A*: {astar_time:.6f}s")
+    
+    # Compute average times for each category.
+    avg_results = {}
+    for cat, times in timings.items():
+        avg_dij = sum(times["dijkstra_times"]) / len(times["dijkstra_times"]) if times["dijkstra_times"] else 0
+        avg_astar = sum(times["astar_times"]) / len(times["astar_times"]) if times["astar_times"] else 0
+        avg_results[cat] = {"avg_dijkstra_time": avg_dij, "avg_astar_time": avg_astar}
+    
+    print("\nAverage Running Times by Transfer Category:")
+    for cat, averages in avg_results.items():
+        print(f"{cat.capitalize()}: Dijkstra = {averages['avg_dijkstra_time']:.6f}s, A* = {averages['avg_astar_time']:.6f}s")
+ 
     
 
 if __name__ == "__main__":
