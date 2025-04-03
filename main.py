@@ -5,7 +5,7 @@ import time
 import random
 import matplotlib.pyplot as plt
 import numpy as np
-from collections import defaultdict, deque
+from collections import defaultdict
 
 class Dgraph():
     def __init__(self, nodes):
