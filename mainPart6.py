@@ -101,6 +101,42 @@ class AStarAdapter(PathFinder):
     def find_shortest_path(self, graph: WeightedGraph, source: int, destination: int) -> list:
         return a_star(graph, source, destination, self.heuristic)
 
+class BellmanFordPathFinder(PathFinder):
+    def __init__(self, k: int):
+        self.k = k
+
+    def find_shortest_path(self, graph: WeightedGraph, source: int, destination: int) -> list:
+        distances, paths = self.bellman_ford(graph, source, self.k)
+        return paths[destination] if distances[destination] != float('infinity') else []
+
+    def bellman_ford(self, graph: WeightedGraph, source: int, k: int):
+        distances = {node: float('infinity') for node in graph.adj}
+        distances[source] = 0
+        paths = {node: [] for node in graph.adj}
+        paths[source] = [source]
+        relaxation_count = {node: 0 for node in graph.adj}
+
+        edges = []
+        for u in graph.adj:
+            for v in graph.adj[u]:
+                w = graph.get_edge_weight(u, v)
+                edges.append((u, v, w))
+
+        for _ in range(len(graph.adj) - 1):
+            no_changes = True
+            for u, v, w in edges:
+                if relaxation_count[v] >= k:
+                    continue
+                if distances[u] + w < distances[v]:
+                    distances[v] = distances[u] + w
+                    paths[v] = paths[u] + [v]
+                    relaxation_count[v] += 1
+                    no_changes = False
+            if no_changes:
+                break
+
+        return distances, paths
+
 # =============================================================================
 # ShortestPathFinder Context (Strategy Pattern)
 # =============================================================================
@@ -173,6 +209,89 @@ def count_transfers(path, connection_lookup):
     return transfers
 
 # =============================================================================
+# Utility Functions For Part 2:
+# =============================================================================
+def generate_random_graph(n, density=0.5):
+    """
+    Generate a random graph with n nodes and approximately density*n*(n-1) edges.
+        
+    Returns:
+        graph: Dictionary representation of the graph
+    """
+    graph = {i: {} for i in range(n)}
+    
+    # Number of possible edges in a directed graph is n*(n-1)
+    possible_edges = n * (n - 1)
+    target_edges = int(possible_edges * density)
+    
+    edges_added = 0
+    while edges_added < target_edges:
+        u = random.randint(0, n-1)
+        v = random.randint(0, n-1)
+        
+        # Skip self-loops
+        if u == v or v in graph[u]:
+            continue
+            
+        # Add edge with random weight (1-10)
+        weight = random.randint(1, 10)
+        graph[u][v] = weight
+        edges_added += 1
+    
+    return graph
+
+def measure_performance(graph, source, k, algorithm):
+    """
+    Measure the performance of the specified algorithm.
+
+    Returns:
+        execution_time: Time taken to execute the algorithm (in seconds)
+        accuracy: Percentage of nodes that have a valid path
+    """
+    start_time = time.time()
+    distances, paths = algorithm(graph, source, k)
+    end_time = time.time()
+    
+    # Measure accuracy (percentage of nodes with valid paths)
+    reachable_nodes = sum(1 for d in distances.values() if d != float('infinity'))
+    accuracy = reachable_nodes / len(graph) * 100
+    
+    return end_time - start_time, accuracy
+
+def draw_plot(x_values, dijkstra_values, bellman_values, x_label, y_label, title):
+    """
+    Draw a plot comparing Dijkstra and Bellman-Ford performance.
+
+    """
+    x = np.array(x_values)
+    
+    # Create the figure with specified size
+    fig = plt.figure(figsize=(20, 8))
+    
+    # Plot Dijkstra's algorithm results
+    plt.plot(x, dijkstra_values, 'b-o', label="Dijkstra's Algorithm")
+    
+    # Plot Bellman-Ford algorithm results
+    plt.plot(x, bellman_values, 'g-s', label="Bellman-Ford Algorithm")
+    
+    # Calculate and show mean lines
+    dijkstra_mean = np.mean(dijkstra_values)
+    bellman_mean = np.mean(bellman_values)
+    
+    plt.axhline(dijkstra_mean, color="blue", linestyle="--", label="Dijkstra Avg")
+    plt.axhline(bellman_mean, color="green", linestyle="--", label="Bellman-Ford Avg")
+    
+    # Add labels and title
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.title(title)
+    plt.grid(True)
+    plt.legend()
+    
+    # Display the plot
+    plt.show()
+
+# =============================================================================
 # A* Implementation (Existing code used via adapter)
 # =============================================================================
 def a_star(graph: WeightedGraph, start, goal, heuristic):
@@ -208,6 +327,149 @@ def _reconstruct_path(came_from, start, goal):
     path.append(start)
     path.reverse()
     return path
+
+# =============================================================================
+# Experiment Function for Part 2.3
+# =============================================================================
+def run_experiment():
+    """
+    Run the performance analysis experiment comparing class-based Dijkstra and Bellman-Ford algorithms.
+    """
+    graph_sizes = [10, 50, 100, 200]
+    densities = [0.1, 0.3, 0.5, 0.7]
+    k_values = [1, 3, 5, 10]
+
+    results = {
+        'dijkstra': defaultdict(list),
+        'bellman_ford': defaultdict(list)
+    }
+
+    def convert_to_weighted_graph(graph_dict):
+        wg = WeightedGraph(len(graph_dict))
+        for u in graph_dict:
+            for v, w in graph_dict[u].items():
+                wg.add_edge(u, v, w)
+        return wg
+
+    print("Experiment 1: Varying Graph Size")
+    for size in graph_sizes:
+        raw_graph = generate_random_graph(size, 0.5)
+        wg = convert_to_weighted_graph(raw_graph)
+        source = 0
+        k = 3
+
+        # Dijkstra
+        dijkstra_algo = ShortestPathFinder(wg, DijkstraPathFinder())
+        d_start = time.time()
+        dijkstra_paths = {node: dijkstra_algo.find_path(source, node) for node in wg.adj}
+        d_time = time.time() - d_start
+        d_accuracy = sum(1 for path in dijkstra_paths.values() if path) / size * 100
+
+        # Bellman-Ford
+        bellman_algo = ShortestPathFinder(wg, BellmanFordPathFinder(k))
+        b_start = time.time()
+        bellman_paths = {node: bellman_algo.find_path(source, node) for node in wg.adj}
+        b_time = time.time() - b_start
+        b_accuracy = sum(1 for path in bellman_paths.values() if path) / size * 100
+
+        results['dijkstra']['size_time'].append(d_time)
+        results['dijkstra']['size_acc'].append(d_accuracy)
+        results['bellman_ford']['size_time'].append(b_time)
+        results['bellman_ford']['size_acc'].append(b_accuracy)
+
+        print(f"Size {size}: Dijkstra {d_time:.5f}s, {d_accuracy:.2f}% | Bellman-Ford {b_time:.5f}s, {b_accuracy:.2f}%")
+
+    print("\nExperiment 2: Varying Graph Density")
+    for density in densities:
+        raw_graph = generate_random_graph(100, density)
+        wg = convert_to_weighted_graph(raw_graph)
+        source = 0
+        k = 3
+
+        dijkstra_algo = ShortestPathFinder(wg, DijkstraPathFinder())
+        d_start = time.time()
+        dijkstra_paths = {node: dijkstra_algo.find_path(source, node) for node in wg.adj}
+        d_time = time.time() - d_start
+        d_accuracy = sum(1 for path in dijkstra_paths.values() if path) / 100 * 100
+
+        bellman_algo = ShortestPathFinder(wg, BellmanFordPathFinder(k))
+        b_start = time.time()
+        bellman_paths = {node: bellman_algo.find_path(source, node) for node in wg.adj}
+        b_time = time.time() - b_start
+        b_accuracy = sum(1 for path in bellman_paths.values() if path) / 100 * 100
+
+        results['dijkstra']['density_time'].append(d_time)
+        results['dijkstra']['density_acc'].append(d_accuracy)
+        results['bellman_ford']['density_time'].append(b_time)
+        results['bellman_ford']['density_acc'].append(b_accuracy)
+
+        print(f"Density {density:.1f}: Dijkstra {d_time:.5f}s, {d_accuracy:.2f}% | Bellman-Ford {b_time:.5f}s, {b_accuracy:.2f}%")
+
+    print("\nExperiment 3: Varying k Value")
+    for k in k_values:
+        raw_graph = generate_random_graph(100, 0.5)
+        wg = convert_to_weighted_graph(raw_graph)
+        source = 0
+
+        dijkstra_algo = ShortestPathFinder(wg, DijkstraPathFinder())
+        d_start = time.time()
+        dijkstra_paths = {node: dijkstra_algo.find_path(source, node) for node in wg.adj}
+        d_time = time.time() - d_start
+        d_accuracy = sum(1 for path in dijkstra_paths.values() if path) / 100 * 100
+
+        bellman_algo = ShortestPathFinder(wg, BellmanFordPathFinder(k))
+        b_start = time.time()
+        bellman_paths = {node: bellman_algo.find_path(source, node) for node in wg.adj}
+        b_time = time.time() - b_start
+        b_accuracy = sum(1 for path in bellman_paths.values() if path) / 100 * 100
+
+        results['dijkstra']['k_time'].append(d_time)
+        results['dijkstra']['k_acc'].append(d_accuracy)
+        results['bellman_ford']['k_time'].append(b_time)
+        results['bellman_ford']['k_acc'].append(b_accuracy)
+
+        print(f"k={k}: Dijkstra {d_time:.5f}s, {d_accuracy:.2f}% | Bellman-Ford {b_time:.5f}s, {b_accuracy:.2f}%")
+
+    # Plot 1: Time vs Graph Size
+    draw_plot(
+        graph_sizes,
+        results['dijkstra']['size_time'],
+        results['bellman_ford']['size_time'],
+        "Graph Size (nodes)",
+        "Execution Time (s)",
+        "Execution Time vs Graph Size (k=3, density=0.5)"
+    )
+
+    # Plot 2: Time vs Graph Density
+    draw_plot(
+        densities,
+        results['dijkstra']['density_time'],
+        results['bellman_ford']['density_time'],
+        "Graph Density",
+        "Execution Time (s)",
+        "Execution Time vs Graph Density (size=100, k=3)"
+    )
+
+    # Plot 3: Time vs k Value
+    draw_plot(
+        k_values,
+        results['dijkstra']['k_time'],
+        results['bellman_ford']['k_time'],
+        "k Value",
+        "Execution Time (s)",
+        "Execution Time vs k Value (size=100, density=0.5)"
+    )
+
+    # Plot 4: Accuracy vs k Value
+    draw_plot(
+        k_values,
+        results['dijkstra']['k_acc'],
+        results['bellman_ford']['k_acc'],
+        "k Value",
+        "Accuracy (%)",
+        "Path Discovery Accuracy vs k Value (size=100, density=0.5)"
+    )
+
 
 # =============================================================================
 # Experiment Function for Part 5 (with transfers)
@@ -288,4 +550,5 @@ def experiment_part_5():
 # Main Execution
 # =============================================================================
 if __name__ == "__main__":
+    run_experiment()
     experiment_part_5()
