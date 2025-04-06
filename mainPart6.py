@@ -421,6 +421,26 @@ def run_experiment():
 
         print(f"k={k}: Dijkstra {d_time:.5f}s, {d_relax} relax | Bellman-Ford {b_time:.5f}s, {b_relax} relax")
 
+    print("\nExperiment 4: Relaxation Count vs k Value")
+    for k in k_values:
+        raw_graph = generate_random_graph(100, 0.5)
+        wg = convert_to_weighted_graph(raw_graph)
+        source = 0
+
+        dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder(k))
+        dijkstra_paths = {node: dijkstra_finder.find_path(source, node) for node in wg.adj}
+        d_relax = sum(len(p) - 1 for p in dijkstra_paths.values() if len(p) > 1)
+
+        bellman_finder = ShortestPathFinder(wg, BellmanFordPathFinder(k))
+        bellman_paths = {node: bellman_finder.find_path(source, node) for node in wg.adj}
+        b_relax = sum(len(p) - 1 for p in bellman_paths.values() if len(p) > 1)
+
+        # Store separately or reuse existing relaxation results for plotting
+        results['dijkstra']['k_relax_exp4'].append(d_relax)
+        results['bellman_ford']['k_relax_exp4'].append(b_relax)
+
+        print(f"k={k}: Dijkstra relax = {d_relax}, Bellman-Ford relax = {b_relax}")
+
     # Plotting
     draw_plot(graph_sizes, results['dijkstra']['size_time'], results['bellman_ford']['size_time'],
               "Graph Size (nodes)", "Execution Time (s)", "Execution Time vs Graph Size")
@@ -431,8 +451,85 @@ def run_experiment():
     draw_plot(k_values, results['dijkstra']['k_time'], results['bellman_ford']['k_time'],
               "k Value", "Execution Time (s)", "Execution Time vs Relaxation Limit (k)")
 
-    draw_plot(k_values, results['dijkstra']['k_relax'], results['bellman_ford']['k_relax'],
-              "k Value", "Relaxation Count", "Total Relaxations vs Relaxation Limit (k)")
+    draw_plot(k_values, results['dijkstra']['k_relax_exp4'], results['bellman_ford']['k_relax_exp4'],
+              "k Value", "Relaxation Count", "Total Relaxations vs k Value (Experiment 4)"
+    )
+
+
+# =============================================================================
+# Experiment Function for Part 5 (with transfers)
+# =============================================================================
+def experiment_part_5():
+    stations_file = "london_stations.csv"
+    connections_file = "london_connections.csv"
+    # Build graph and load station & connection data.
+    graph, station_positions, station_connections = build_graph(stations_file, connections_file)
+    stations = list(station_positions.keys())
+    connection_lookup = build_connection_lookup(station_connections)
+
+    # Containers to accumulate times per transfer category.
+    timings = {
+        "same_line": {"dijkstra_times": [], "astar_times": []},
+        "one_transfer": {"dijkstra_times": [], "astar_times": []},
+        "multiple_transfers": {"dijkstra_times": [], "astar_times": []}
+    }
+    results = []
+
+    # We'll use our DijkstraPathFinder and AStarAdapter as our algorithms.
+    dijkstra_finder = DijkstraPathFinder()
+
+    # For each pair, we instantiate an A* adapter with the destination's heuristic.
+    for source in stations:
+        for destination in stations:
+            if source == destination:
+                continue
+
+            # Time Dijkstra
+            start_time = time.perf_counter()
+            dijkstra_path = dijkstra_finder.find_shortest_path(graph, source, destination)
+            dijkstra_time = time.perf_counter() - start_time
+
+            # Time A* using the adapter.
+            astar_adapter = AStarAdapter(station_positions, destination)
+            start_time = time.perf_counter()
+            astar_path = astar_adapter.find_shortest_path(graph, source, destination)
+            astar_time = time.perf_counter() - start_time
+
+            # Count transfers (using the Dijkstra path as an example)
+            transfers = count_transfers(dijkstra_path, connection_lookup)
+            if transfers == 0:
+                category = "same_line"
+            elif transfers == 1:
+                category = "one_transfer"
+            else:
+                category = "multiple_transfers"
+
+            timings[category]["dijkstra_times"].append(dijkstra_time)
+            timings[category]["astar_times"].append(astar_time)
+
+            results.append({
+                "source": source,
+                "destination": destination,
+                "transfers": transfers,
+                "category": category,
+                "dijkstra_time": dijkstra_time,
+                "astar_time": astar_time
+            })
+            print(f"Source: {source}, Destination: {destination} | Transfers: {transfers} ({category}) | "
+                  f"Dijkstra: {dijkstra_time:.6f}s, A*: {astar_time:.6f}s")
+
+    # Compute average times per category.
+    avg_results = {}
+    for cat, times in timings.items():
+        avg_dij = sum(times["dijkstra_times"]) / len(times["dijkstra_times"]) if times["dijkstra_times"] else 0
+        avg_astar = sum(times["astar_times"]) / len(times["astar_times"]) if times["astar_times"] else 0
+        avg_results[cat] = {"avg_dijkstra_time": avg_dij, "avg_astar_time": avg_astar}
+    
+    print("\nAverage Running Times by Transfer Category:")
+    for cat, averages in avg_results.items():
+        print(f"{cat.capitalize()}: Dijkstra = {averages['avg_dijkstra_time']:.6f}s, A* = {averages['avg_astar_time']:.6f}s")
+    
+    return avg_results, results
 
 
 # =============================================================================
