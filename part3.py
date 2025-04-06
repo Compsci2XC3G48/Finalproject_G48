@@ -93,5 +93,43 @@ def bellman_ford_all_pairs(graph):
         all_pairs_predecessors[node] = predecessors
     return all_pairs_distances, all_pairs_predecessors
 
+if __name__ == "__main__":
+    print("=== Test Case 1: Non-negative edges (Dijkstra) ===")
+    graph1 = Dgraph(5)
+    graph1.add_edge(0, 1, 2)
+    graph1.add_edge(0, 2, 4)
+    graph1.add_edge(1, 2, 1)
+    graph1.add_edge(1, 3, 7)
+    graph1.add_edge(2, 4, 3)
+    graph1.add_edge(3, 4, 1)
+
+    distances, predecessors = all_pairs_shortest_paths(graph1)
+
+    print("\nAll-Pairs Shortest Distances (Dijkstra):")
+    for src in distances:
+        print(f"From node {src}: {distances[src]}")
+
+    print("\nPredecessors:")
+    for src in predecessors:
+        print(f"From node {src}: {predecessors[src]}")
+
+    print("\n=== Test Case 2: Graph with negative edge (Bellman-Ford) ===")
+    graph2 = Dgraph(4)
+    graph2.add_edge(0, 1, 1)
+    graph2.add_edge(1, 2, -2)  # Negative edge
+    graph2.add_edge(2, 3, 2)
+    graph2.add_edge(3, 1, 1)
+
+    distances, predecessors = all_pairs_shortest_paths(graph2)
+
+    print("\nAll-Pairs Shortest Distances (Bellman-Ford):")
+    for src in distances:
+        print(f"From node {src}: {distances[src]}")
+
+    print("\nPredecessors:")
+    for src in predecessors:
+        print(f"From node {src}: {predecessors[src]}")
+
+
 
 
