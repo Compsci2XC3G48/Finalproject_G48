@@ -396,30 +396,53 @@ def run_experiment():
 
         print(f"Density {density:.1f}: Dijkstra {d_time:.5f}s, {d_relax} relax | Bellman-Ford {b_time:.5f}s, {b_relax} relax")
 
-    print("\nExperiment 3: Varying k Value")
+    print("\nExperiment 3: Varying k Value (Averaged over trials)")
+    trials = 5  # number of trials per k-value
+
     for k in k_values:
-        raw_graph = generate_random_graph(100, 0.5)
-        wg = convert_to_weighted_graph(raw_graph)
-        source = 0
+        d_time_total = 0
+        b_time_total = 0
+        d_relax_total = 0
+        b_relax_total = 0
 
-        dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder(k))
-        d_start = time.time()
-        dijkstra_paths = {node: dijkstra_finder.find_path(source, node) for node in wg.adj}
-        d_time = time.time() - d_start
-        d_relax = count_total_relaxations(dijkstra_paths)
+        for _ in range(trials):
+            raw_graph = generate_random_graph(100, 0.5)
+            wg = convert_to_weighted_graph(raw_graph)
+            source = 0
 
-        bellman_finder = ShortestPathFinder(wg, BellmanFordPathFinder(k))
-        b_start = time.time()
-        bellman_paths = {node: bellman_finder.find_path(source, node) for node in wg.adj}
-        b_time = time.time() - b_start
-        b_relax = count_total_relaxations(bellman_paths)
+            # Dijkstra
+            dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder(k))
+            d_start = time.time()
+            dijkstra_paths = {node: dijkstra_finder.find_path(source, node) for node in wg.adj}
+            d_time = time.time() - d_start
+            d_relax = count_total_relaxations(dijkstra_paths)
 
-        results['dijkstra']['k_time'].append(d_time)
-        results['dijkstra']['k_relax'].append(d_relax)
-        results['bellman_ford']['k_time'].append(b_time)
-        results['bellman_ford']['k_relax'].append(b_relax)
+            # Bellman-Ford
+            bellman_finder = ShortestPathFinder(wg, BellmanFordPathFinder(k))
+            b_start = time.time()
+            bellman_paths = {node: bellman_finder.find_path(source, node) for node in wg.adj}
+            b_time = time.time() - b_start
+            b_relax = count_total_relaxations(bellman_paths)
 
-        print(f"k={k}: Dijkstra {d_time:.5f}s, {d_relax} relax | Bellman-Ford {b_time:.5f}s, {b_relax} relax")
+            d_time_total += d_time
+            d_relax_total += d_relax
+            b_time_total += b_time
+            b_relax_total += b_relax
+
+        # Compute and store averages
+        avg_d_time = d_time_total / trials
+        avg_b_time = b_time_total / trials
+        avg_d_relax = d_relax_total / trials
+        avg_b_relax = b_relax_total / trials
+
+        results['dijkstra']['k_time'].append(avg_d_time)
+        results['dijkstra']['k_relax'].append(avg_d_relax)
+        results['bellman_ford']['k_time'].append(avg_b_time)
+        results['bellman_ford']['k_relax'].append(avg_b_relax)
+
+        print(f"k={k}: Dijkstra = {avg_d_time:.5f}s, relax = {avg_d_relax:.1f} | "
+          f"Bellman-Ford = {avg_b_time:.5f}s, relax = {avg_b_relax:.1f}")
+
 
     print("\nExperiment 4: Relaxation Count vs k Value")
     for k in k_values:
