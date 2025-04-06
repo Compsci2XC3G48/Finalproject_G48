@@ -53,7 +53,8 @@ class Dgraph():
     
 #Part 2 starts from here
 #Part 2.1:
-def dijkstra(graph, source, k):
+    
+def dijkstra(graph, source, k, track_relaxations=False):
     """
     Implementation of Dijkstra's algorithm variation where each node can be relaxed at most k times.
 
@@ -61,46 +62,52 @@ def dijkstra(graph, source, k):
         distances: Dictionary mapping each node to its shortest distance from source
         paths: Dictionary mapping each node to the path from source
     """
-    # Initialize distances with infinity for all nodes except the source
+    
+    # Initialize distances from source to all nodes as infinity
     distances = {node: float('infinity') for node in graph}
     distances[source] = 0
-    
-    # Initialize paths dictionary to store the shortest path to each node
+
+    # Store the actual paths from the source to each node
     paths = {node: [] for node in graph}
     paths[source] = [source]
-    
-    # Initialize a dictionary to track relaxation count for each node
+
+    # Count how many times each node has been relaxed
     relaxation_count = {node: 0 for node in graph}
-    
-    # Initialize priority queue with (distance, node)
+    total_relaxations = 0
+
+    # Min-heap priority queue to determine next closest node to process
     priority_queue = [(0, source)]
-    
+
     while priority_queue:
         current_distance, current_node = heapq.heappop(priority_queue)
-        
-        # Skip if we've found a better path since this entry was added
+
+        # Skip outdated entries in the priority queue
         if current_distance > distances[current_node]:
             continue
-            
-        # Process neighbors
+
+        # Explore all neighboring nodes
         for neighbor, weight in graph[current_node].items():
-            # Skip if node has already been relaxed k times
+            # Enforce the relaxation limit
             if relaxation_count[neighbor] >= k:
                 continue
-                
+
+            # Calculate tentative distance to neighbor
             distance = current_distance + weight
-            
-            # If we found a shorter path, update distance and path
+
+            # If this path is better, update the distance and path
             if distance < distances[neighbor]:
                 distances[neighbor] = distance
                 paths[neighbor] = paths[current_node] + [neighbor]
                 relaxation_count[neighbor] += 1
+                total_relaxations += 1
                 heapq.heappush(priority_queue, (distance, neighbor))
-    
+
+    if track_relaxations:
+        return distances, paths, total_relaxations
     return distances, paths
 
 # Part 2.2:
-def bellman_ford(graph, source, k):
+def bellman_ford(graph, source, k, track_relaxations=False):
     """
     Implementation of Bellman-Ford algorithm variation where each node can be relaxed at most k times.
 
@@ -108,41 +115,42 @@ def bellman_ford(graph, source, k):
         distances: Dictionary mapping each node to its shortest distance from source
         paths: Dictionary mapping each node to the path from source
     """
-    # Initialize distances with infinity for all nodes except the source
+    # Initialize distances and paths
     distances = {node: float('infinity') for node in graph}
     distances[source] = 0
-    
-    # Initialize paths dictionary to store the shortest path to each node
     paths = {node: [] for node in graph}
     paths[source] = [source]
-    
-    # Initialize a dictionary to track relaxation count for each node
+
+    # Keep track of how many times each node has been relaxed
     relaxation_count = {node: 0 for node in graph}
-    
-    # Get all edges from the graph
-    edges = []
-    for node in graph:
-        for neighbor, weight in graph[node].items():
-            edges.append((node, neighbor, weight))
-    
-    # Relax all edges repeatedly
-    for _ in range(len(graph) - 1):  # In the worst case, we need N-1 iterations
-        no_changes = True
+    total_relaxations = 0
+
+    # Collect all edges in the graph
+    edges = [(u, v, w) for u in graph for v, w in graph[u].items()]
+
+    # Bellman-Ford runs up to (V - 1) iterations
+    for _ in range(len(graph) - 1):
+        no_changes = True  # Flag to detect if we can terminate early
+
         for u, v, weight in edges:
-            # Skip if node has already been relaxed k times
+            # Skip if node 'v' has already been relaxed k times
             if relaxation_count[v] >= k:
                 continue
-                
+
+            # Relax edge if it offers a shorter path
             if distances[u] != float('infinity') and distances[u] + weight < distances[v]:
                 distances[v] = distances[u] + weight
                 paths[v] = paths[u] + [v]
                 relaxation_count[v] += 1
-                no_changes = False
-        
-        # If no changes were made in this iteration, we can break early
+                total_relaxations += 1
+                no_changes = False  # A change occurred this round
+
+        # If no relaxations happened, early termination is possible
         if no_changes:
             break
-    
+
+    if track_relaxations:
+        return distances, paths, total_relaxations
     return distances, paths
 
 # Part 2.3:
@@ -153,26 +161,17 @@ def generate_random_graph(n, density=0.5):
     Returns:
         graph: Dictionary representation of the graph
     """
+    # Create a graph with n nodes and approximately density*n*(n-1) directed edges
     graph = {i: {} for i in range(n)}
-    
-    # Number of possible edges in a directed graph is n*(n-1)
-    possible_edges = n * (n - 1)
-    target_edges = int(possible_edges * density)
-    
+    possible_edges = n * (n - 1)  # Total possible directed edges excluding self-loops
+    target_edges = int(possible_edges * density)  # Target number of edges based on density
     edges_added = 0
+
     while edges_added < target_edges:
-        u = random.randint(0, n-1)
-        v = random.randint(0, n-1)
-        
-        # Skip self-loops
-        if u == v or v in graph[u]:
-            continue
-            
-        # Add edge with random weight (1-10)
-        weight = random.randint(1, 10)
-        graph[u][v] = weight
-        edges_added += 1
-    
+        u, v = random.randint(0, n - 1), random.randint(0, n - 1)
+        if u != v and v not in graph[u]:
+            graph[u][v] = random.randint(1, 10)
+            edges_added += 1
     return graph
 
 def measure_performance(graph, source, k, algorithm):
@@ -184,154 +183,93 @@ def measure_performance(graph, source, k, algorithm):
         accuracy: Percentage of nodes that have a valid path
     """
     start_time = time.time()
-    distances, paths = algorithm(graph, source, k)
+    distances, paths, relax_count = algorithm(graph, source, k, track_relaxations=True)
     end_time = time.time()
-    
-    # Measure accuracy (percentage of nodes with valid paths)
-    reachable_nodes = sum(1 for d in distances.values() if d != float('infinity'))
-    accuracy = reachable_nodes / len(graph) * 100
-    
-    return end_time - start_time, accuracy
+    return end_time - start_time, relax_count
 
-def draw_plot(x_values, dijkstra_values, bellman_values, x_label, y_label, title):
-    """
-    Draw a plot comparing Dijkstra and Bellman-Ford performance.
-
-    """
+def draw_plot(x_values, dijkstra_values, bellman_values, x_label, y_label, title, y_limit=None):
     x = np.array(x_values)
-    
-    # Create the figure with specified size
-    fig = plt.figure(figsize=(20, 8))
-    
-    # Plot Dijkstra's algorithm results
-    plt.plot(x, dijkstra_values, 'b-o', label="Dijkstra's Algorithm")
-    
-    # Plot Bellman-Ford algorithm results
-    plt.plot(x, bellman_values, 'g-s', label="Bellman-Ford Algorithm")
-    
-    # Calculate and show mean lines
-    dijkstra_mean = np.mean(dijkstra_values)
-    bellman_mean = np.mean(bellman_values)
-    
-    plt.axhline(dijkstra_mean, color="blue", linestyle="--", label="Dijkstra Avg")
-    plt.axhline(bellman_mean, color="green", linestyle="--", label="Bellman-Ford Avg")
-    
-    # Add labels and title
-    plt.xlabel(x_label)
-    plt.ylabel(y_label)
-    plt.title(title)
-    plt.grid(True)
-    plt.legend()
-    
-    # Display the plot
+    fig, ax = plt.subplots(figsize=(14, 6))
+    ax.plot(x, dijkstra_values, 'o-', label="Dijkstra's Algorithm", linewidth=2, markersize=8)
+    ax.plot(x, bellman_values, 's--', label="Bellman-Ford Algorithm", linewidth=2, markersize=8)
+    ax.axhline(np.mean(dijkstra_values), color="blue", linestyle=":", linewidth=1.5, label="Dijkstra Avg")
+    ax.axhline(np.mean(bellman_values), color="green", linestyle=":", linewidth=1.5, label="Bellman Avg")
+    for i, (dx, bx) in enumerate(zip(dijkstra_values, bellman_values)):
+        ax.annotate(f"{dx:.2f}", (x[i], dx), textcoords="offset points", xytext=(0, 5), ha='center', fontsize=9)
+        ax.annotate(f"{bx:.2f}", (x[i], bx), textcoords="offset points", xytext=(0, -15), ha='center', fontsize=9)
+    ax.set_xlabel(x_label, fontsize=12)
+    ax.set_ylabel(y_label, fontsize=12)
+    ax.set_title(title, fontsize=14)
+    if y_limit:
+        ax.set_ylim(*y_limit)
+    ax.grid(True, linestyle="--", alpha=0.6)
+    ax.legend(fontsize=11)
+    plt.tight_layout()
     plt.show()
 
 def run_experiment():
-    """
-    Run the performance analysis experiment comparing both algorithms.
-    """
-    # Parameters to vary
     graph_sizes = [10, 50, 100, 200]
     densities = [0.1, 0.3, 0.5, 0.7]
     k_values = [1, 3, 5, 10]
-    
-    # Results storage
+
     results = {
         'dijkstra': defaultdict(list),
         'bellman_ford': defaultdict(list)
     }
-    
-    # 1. Vary graph size (fixed density=0.5, k=3)
+
+    # Experiment 1: Vary Graph Size
     print("Experiment 1: Varying Graph Size")
     for size in graph_sizes:
         graph = generate_random_graph(size, 0.5)
         source = 0
         k = 3
-        
-        dijkstra_time, dijkstra_acc = measure_performance(graph, source, k, dijkstra)
-        bellman_time, bellman_acc = measure_performance(graph, source, k, bellman_ford)
-        
-        results['dijkstra']['size_time'].append(dijkstra_time)
-        results['dijkstra']['size_acc'].append(dijkstra_acc)
-        results['bellman_ford']['size_time'].append(bellman_time)
-        results['bellman_ford']['size_acc'].append(bellman_acc)
-        
-        print(f"Size {size}: Dijkstra {dijkstra_time:.5f}s, {dijkstra_acc:.2f}% | Bellman-Ford {bellman_time:.5f}s, {bellman_acc:.2f}%")
-    
-    # 2. Vary graph density (fixed size=100, k=3)
+        d_time, d_relax = measure_performance(graph, source, k, dijkstra)
+        b_time, b_relax = measure_performance(graph, source, k, bellman_ford)
+        results['dijkstra']['size_time'].append(d_time)
+        results['dijkstra']['size_relax'].append(d_relax)
+        results['bellman_ford']['size_time'].append(b_time)
+        results['bellman_ford']['size_relax'].append(b_relax)
+        print(f"Size {size}: Dijkstra {d_time:.5f}s, {d_relax} relax | Bellman-Ford {b_time:.5f}s, {b_relax} relax")
+
+    # Experiment 2: Vary Graph Density
     print("\nExperiment 2: Varying Graph Density")
     for density in densities:
         graph = generate_random_graph(100, density)
         source = 0
         k = 3
-        
-        dijkstra_time, dijkstra_acc = measure_performance(graph, source, k, dijkstra)
-        bellman_time, bellman_acc = measure_performance(graph, source, k, bellman_ford)
-        
-        results['dijkstra']['density_time'].append(dijkstra_time)
-        results['dijkstra']['density_acc'].append(dijkstra_acc)
-        results['bellman_ford']['density_time'].append(bellman_time)
-        results['bellman_ford']['density_acc'].append(bellman_acc)
-        
-        print(f"Density {density}: Dijkstra {dijkstra_time:.5f}s, {dijkstra_acc:.2f}% | Bellman-Ford {bellman_time:.5f}s, {bellman_acc:.2f}%")
-    
-    # 3. Vary k value (fixed size=100, density=0.5)
+        d_time, d_relax = measure_performance(graph, source, k, dijkstra)
+        b_time, b_relax = measure_performance(graph, source, k, bellman_ford)
+        results['dijkstra']['density_time'].append(d_time)
+        results['dijkstra']['density_relax'].append(d_relax)
+        results['bellman_ford']['density_time'].append(b_time)
+        results['bellman_ford']['density_relax'].append(b_relax)
+        print(f"Density {density:.1f}: Dijkstra {d_time:.5f}s, {d_relax} relax | Bellman-Ford {b_time:.5f}s, {b_relax} relax")
+
+    # Experiment 3: Vary Relaxation Limit k
     print("\nExperiment 3: Varying k Value")
     for k in k_values:
         graph = generate_random_graph(100, 0.5)
         source = 0
-        
-        dijkstra_time, dijkstra_acc = measure_performance(graph, source, k, dijkstra)
-        bellman_time, bellman_acc = measure_performance(graph, source, k, bellman_ford)
-        
-        results['dijkstra']['k_time'].append(dijkstra_time)
-        results['dijkstra']['k_acc'].append(dijkstra_acc)
-        results['bellman_ford']['k_time'].append(bellman_time)
-        results['bellman_ford']['k_acc'].append(bellman_acc)
-        
-        print(f"k={k}: Dijkstra {dijkstra_time:.5f}s, {dijkstra_acc:.2f}% | Bellman-Ford {bellman_time:.5f}s, {bellman_acc:.2f}%")
-    
-    # Display four separate plots
-    
-    # Plot 1: Time vs Graph Size
-    draw_plot(
-        graph_sizes,
-        results['dijkstra']['size_time'],
-        results['bellman_ford']['size_time'],
-        "Graph Size (nodes)",
-        "Execution Time (s)",
-        "Execution Time vs Graph Size (k=3, density=0.5)"
-    )
-    
-    # Plot 2: Time vs Graph Density
-    draw_plot(
-        densities,
-        results['dijkstra']['density_time'],
-        results['bellman_ford']['density_time'],
-        "Graph Density",
-        "Execution Time (s)",
-        "Execution Time vs Graph Density (size=100, k=3)"
-    )
-    
-    # Plot 3: Time vs k Value
-    draw_plot(
-        k_values,
-        results['dijkstra']['k_time'],
-        results['bellman_ford']['k_time'],
-        "k Value",
-        "Execution Time (s)",
-        "Execution Time vs k Value (size=100, density=0.5)"
-    )
-    
-    # Plot 4: Accuracy vs k Value
-    draw_plot(
-        k_values,
-        results['dijkstra']['k_acc'],
-        results['bellman_ford']['k_acc'],
-        "k Value",
-        "Accuracy (%)",
-        "Path Discovery Accuracy vs k Value (size=100, density=0.5)"
-    )
+        d_time, d_relax = measure_performance(graph, source, k, dijkstra)
+        b_time, b_relax = measure_performance(graph, source, k, bellman_ford)
+        results['dijkstra']['k_time'].append(d_time)
+        results['dijkstra']['k_relax'].append(d_relax)
+        results['bellman_ford']['k_time'].append(b_time)
+        results['bellman_ford']['k_relax'].append(b_relax)
+        print(f"k={k}: Dijkstra {d_time:.5f}s, {d_relax} relax | Bellman-Ford {b_time:.5f}s, {b_relax} relax")
+
+    # Plotting
+    draw_plot(graph_sizes, results['dijkstra']['size_time'], results['bellman_ford']['size_time'],
+              "Graph Size (nodes)", "Execution Time (s)", "Execution Time vs Graph Size (k=3, density=0.5)")
+
+    draw_plot(densities, results['dijkstra']['density_time'], results['bellman_ford']['density_time'],
+              "Graph Density", "Execution Time (s)", "Execution Time vs Graph Density (size=100, k=3)")
+
+    draw_plot(k_values, results['dijkstra']['k_time'], results['bellman_ford']['k_time'],
+              "k Value", "Execution Time (s)", "Execution Time vs k Value (size=100, density=0.5)")
+
+    draw_plot(k_values, results['dijkstra']['k_relax'], results['bellman_ford']['k_relax'],
+              "k Value", "Relaxation Count", "Total Relaxations vs k Value (size=100, density=0.5)")
     
 
 def a_star(graph: Dgraph, start, goal, heuristic):
