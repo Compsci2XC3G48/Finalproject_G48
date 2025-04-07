@@ -50,16 +50,30 @@ class PathFinder(ABC):
 
 class DijkstraPathFinder(PathFinder):
     """
-    Dijkstra's algorithm with per-node relaxation limit (k).
+    Implements Dijkstra's algorithm.
     """
-    def __init__(self, k: int):
-        self.k = k
-
     def find_shortest_path(self, graph: WeightedGraph, source: int, destination: int) -> list:
-        distances, paths = self._dijkstra(graph, source, self.k)
-        return paths[destination] if destination in paths else []
+        open_set = []
+        heapq.heappush(open_set, (0, source))
+        came_from = {}
+        g_score = {node: float('inf') for node in graph.adj}
+        g_score[source] = 0
 
-    def _dijkstra(self, graph: WeightedGraph, source: int, k: int):
+        while open_set:
+            current_cost, current = heapq.heappop(open_set)
+            if current == destination:
+                return self._reconstruct_path(came_from, source, destination)
+
+            for neighbor in graph.connected_nodes(current):
+                edge_weight = graph.get_edge_weight(current, neighbor)
+                tentative_score = current_cost + edge_weight
+                if tentative_score < g_score[neighbor]:
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tentative_score
+                    heapq.heappush(open_set, (tentative_score, neighbor))
+        return []
+
+    def find_shortest_path_k(self, graph, source, goal, k):
         distances = {node: float('inf') for node in graph.adj}
         distances[source] = 0
         paths = {node: [] for node in graph.adj}
@@ -84,6 +98,17 @@ class DijkstraPathFinder(PathFinder):
                     heapq.heappush(queue, (new_distance, neighbor))
 
         return distances, paths
+
+    def _reconstruct_path(self, came_from: dict, source: int, destination: int) -> list:
+        path = []
+        current = destination
+        while current in came_from:
+            path.append(current)
+            current = came_from[current]
+        path.append(source)
+        path.reverse()
+        return path
+
 
 
     def _reconstruct_path(self, came_from: dict, source: int, destination: int) -> list:
@@ -167,6 +192,9 @@ class ShortestPathFinder:
 
     def find_path(self, source: int, destination: int) -> list:
         return self.algorithm.find_shortest_path(self.graph, source, destination)
+    
+    def find_path_k(self, source: int, destination: int, k) -> list:
+        return self.algorithm.find_shortest_path_k(self.graph, source, destination,k)
 
 # =============================================================================
 # Utility Functions (Loading, Distance, etc.)
@@ -350,9 +378,9 @@ def run_experiment():
         k = 3
 
         # Class-based Dijkstra
-        dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder(k))
+        dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder())
         d_start = time.time()
-        dijkstra_paths = {node: dijkstra_finder.find_path(source, node) for node in wg.adj}
+        dijkstra_paths = {node: dijkstra_finder.find_path_k(source, node,k) for node in wg.adj}
         d_time = time.time() - d_start
         d_relax = count_total_relaxations(dijkstra_paths)
 
@@ -377,7 +405,7 @@ def run_experiment():
         source = 0
         k = 3
 
-        dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder(k))
+        dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder())
         d_start = time.time()
         dijkstra_paths = {node: dijkstra_finder.find_path(source, node) for node in wg.adj}
         d_time = time.time() - d_start
@@ -411,7 +439,7 @@ def run_experiment():
             source = 0
 
             # Dijkstra
-            dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder(k))
+            dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder())
             d_start = time.time()
             dijkstra_paths = {node: dijkstra_finder.find_path(source, node) for node in wg.adj}
             d_time = time.time() - d_start
@@ -450,7 +478,7 @@ def run_experiment():
         wg = convert_to_weighted_graph(raw_graph)
         source = 0
 
-        dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder(k))
+        dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder())
         dijkstra_paths = {node: dijkstra_finder.find_path(source, node) for node in wg.adj}
         d_relax = sum(len(p) - 1 for p in dijkstra_paths.values() if len(p) > 1)
 
@@ -635,4 +663,4 @@ def experiment_part_5():
 # =============================================================================
 if __name__ == "__main__":
     run_experiment()
-    experiment_part_5()
+    # experiment_part_5()
