@@ -73,48 +73,38 @@ class DijkstraPathFinder(PathFinder):
                     heapq.heappush(open_set, (tentative_score, neighbor))
         return []
 
-    def find_shortest_path_k_repeat(self, graph, source, goal, k, repeat=10000):
-        last_relax = {}
-        for _ in range(repeat):
-            _, _, last_relax = self.find_shortest_path_k(graph, source, goal, k)
-        return last_relax
-
-    def find_shortest_path_k(self, graph, source, goal, k):
-        
-        def spin_wait(n=500):
-            x = 0
-            for _ in range(n):
-                x += 1
-
+    def find_shortest_path_k(self, graph, source, goal=None, k=10):
         distances = defaultdict(lambda: float('inf'))
         distances[source] = 0
         paths = defaultdict(list)
         paths[source] = [source]
         relaxation_count = defaultdict(int)
-
         queue = [(0, source)]
+        total_relaxations = 0
+        visited = set()
 
-        while queue:
+        while queue and total_relaxations < k:
             current_distance, current = heapq.heappop(queue)
-
-            if relaxation_count[current] >= k:
+            if current in visited:
                 continue
-
-            relaxation_count[current] += 1
+            visited.add(current)
 
             for neighbor in graph.connected_nodes(current):
-                # Add artificial CPU delay
-                spin_wait(500)  # Adjust up/down to control timing
-
                 weight = graph.get_edge_weight(current, neighbor)
-                new_distance = current_distance + weight
+                new_distance = distances[current] + weight
 
                 if new_distance < distances[neighbor]:
                     distances[neighbor] = new_distance
                     paths[neighbor] = paths[current] + [neighbor]
                     heapq.heappush(queue, (new_distance, neighbor))
+                    relaxation_count[neighbor] += 1
+                    total_relaxations += 1
 
-        return distances, paths, relaxation_count
+                    if total_relaxations >= k:
+                        break
+
+        if goal is not None:
+            return distances[goal], {goal: paths.get(goal, [])}, relaxation_count
 
     def _reconstruct_path(self, came_from: dict, source: int, destination: int) -> list:
         path = []
@@ -146,42 +136,37 @@ class AStarAdapter(PathFinder):
 
 class BellmanFordPathFinder(PathFinder):
     """
-    Bellman-Ford algorithm with per-node relaxation limit (k).
+    Bellman-Ford algorithm with global iteration limit (k).
     """
     def __init__(self, k: int):
         self.k = k
 
     def find_shortest_path(self, graph: WeightedGraph, source: int, destination: int) -> list:
         distances, paths = self._bellman_ford(graph, source, self.k)
-        return paths[destination] if distances[destination] != float('infinity') else []
+        return paths.get(destination, [])
 
     def _bellman_ford(self, graph: WeightedGraph, source: int, k: int):
         distances = {node: float('inf') for node in graph.adj}
         distances[source] = 0
         paths = {node: [] for node in graph.adj}
         paths[source] = [source]
-        relaxation_count = {node: 0 for node in graph.adj}
 
-        edges = []
-        for u in graph.adj:
-            for v in graph.connected_nodes(u):
-                weight = graph.get_edge_weight(u, v)
-                edges.append((u, v, weight))
-
-        for _ in range(len(graph.adj) - 1):
+        for _ in range(k):  # LIMIT to k relaxation passes 
             updated = False
-            for u, v, w in edges:
-                if relaxation_count[v] >= k:
-                    continue
-                if distances[u] + w < distances[v]:
-                    distances[v] = distances[u] + w
-                    paths[v] = paths[u] + [v]
-                    relaxation_count[v] += 1
-                    updated = True
+            for u in graph.adj:
+                for v in graph.connected_nodes(u):
+                    weight = graph.get_edge_weight(u, v)
+                    if distances[u] + weight < distances[v]:
+                        distances[v] = distances[u] + weight
+                        paths[v] = paths[u] + [v]
+                        updated = True
             if not updated:
                 break
 
         return distances, paths
+
+
+
 
 
 # =============================================================================
@@ -282,6 +267,37 @@ def generate_random_graph(n, density=0.5):
     return graph
 
 
+def generate_random_undirected_graph(n, density=0.05):
+    """
+    Generate a sparse undirected graph with approximately density*n*(n-1)/2 edges.
+    """
+    graph = WeightedGraph(n)
+    possible_edges = [(i, j) for i in range(n) for j in range(i+1, n)]
+    random.shuffle(possible_edges)
+
+    target_edges = int(density * len(possible_edges))
+    for i in range(target_edges):
+        u, v = possible_edges[i]
+        weight = random.randint(1, 10)
+        graph.add_edge(u, v, weight)  # uses your original add_edge()
+
+    return graph
+
+def generate_strict_chain_graph(n):
+    """
+    Directed chain: 0 -> 1 -> 2 -> ... -> (n-1), weight = 1 on all edges.
+    """
+    graph = WeightedGraph(n)
+    # Override the adjacency lists and weights to ensure it's a directed graph
+    graph.adj = {i: [] for i in range(n)}
+    graph.weights = {}
+    
+    for i in range(n - 1):
+        graph.adj[i].append(i + 1)
+        graph.weights[(i, i + 1)] = 1  # Always 1, forces k relaxations for node k
+    
+    return graph
+
 def measure_performance(graph, source, k, algorithm):
     """
     Measure the performance of the specified algorithm.
@@ -297,18 +313,19 @@ def measure_performance(graph, source, k, algorithm):
 
 def draw_plot(x_values, dijkstra_values, bellman_values, x_label, y_label, title, y_limit=None, scale_factor=1.0):
     x = np.array(x_values)
-    d_values = [v * scale_factor for v in dijkstra_values]
-    b_values = [v * scale_factor for v in bellman_values]
-
     fig, ax = plt.subplots(figsize=(14, 6))
-    ax.plot(x, d_values, 'o-', label="Dijkstra", linewidth=2, markersize=8)
-    ax.plot(x, b_values, 's--', label="Bellman-Ford", linewidth=2, markersize=8)
-    ax.axhline(np.mean(d_values), color="blue", linestyle=":", linewidth=1.5, label="Dijkstra Avg")
-    ax.axhline(np.mean(b_values), color="green", linestyle=":", linewidth=1.5, label="Bellman Avg")
 
-    for i, (dx, bx) in enumerate(zip(d_values, b_values)):
-        ax.annotate(f"{dx:.2f}", (x[i], dx), textcoords="offset points", xytext=(0, 5), ha='center', fontsize=9)
-        ax.annotate(f"{bx:.2f}", (x[i], bx), textcoords="offset points", xytext=(0, -15), ha='center', fontsize=9)
+    if dijkstra_values:
+        d_values = [v * scale_factor for v in dijkstra_values]
+        if len(d_values) == len(x):
+            ax.plot(x, d_values, 'o-', label="Dijkstra", linewidth=2, markersize=8)
+            ax.axhline(np.mean(d_values), color="blue", linestyle=":", linewidth=1.5, label="Dijkstra Avg")
+
+    if bellman_values:
+        b_values = [v * scale_factor for v in bellman_values]
+        if len(b_values) == len(x):
+            ax.plot(x, b_values, 's--', label="Bellman-Ford", linewidth=2, markersize=8)
+            ax.axhline(np.mean(b_values), color="green", linestyle=":", linewidth=1.5, label="Bellman Avg")
 
     ax.set_xlabel(x_label, fontsize=12)
     ax.set_ylabel(y_label, fontsize=12)
@@ -319,6 +336,7 @@ def draw_plot(x_values, dijkstra_values, bellman_values, x_label, y_label, title
     ax.legend(fontsize=11)
     plt.tight_layout()
     plt.show()
+
 
 
 # =============================================================================
@@ -363,15 +381,23 @@ def _reconstruct_path(came_from, start, goal):
 # =============================================================================
 def run_experiment():
     import time
+    import math
+    import numpy as np
+    from collections import defaultdict
 
     graph_sizes = [10, 50, 100, 200]
     densities = [0.1, 0.3, 0.5, 0.7]
-    k_values = [1, 3, 5, 10]
-    repeat_count = 1  # For Dijkstra internal repeat
+    k_values = [1, 3, 5, 10, 50, 100, 200]
+    repeat_count = 1
+    accuracy_k_values = [1, 5, 10, 25, 50, 100, 200]
+    accuracy_trials = 1
+    graph_size = 100
+    graph_density = 0.5
 
     results = {
         'dijkstra': defaultdict(list),
-        'bellman_ford': defaultdict(list)
+        'bellman_ford': defaultdict(list),
+        'accuracy_k_values': accuracy_k_values
     }
 
     def convert_to_weighted_graph(graph_dict):
@@ -389,60 +415,56 @@ def run_experiment():
         raw_graph = generate_random_graph(size, 0.5)
         wg = convert_to_weighted_graph(raw_graph)
         source = 0
-        k = 3
 
         dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder())
         d_start = time.time()
-        d_relax = dijkstra_finder.algorithm.find_shortest_path_k_repeat(wg, source, None, k, repeat=repeat_count)
-        d_time = (time.time() - d_start) / repeat_count * 1000  # ms
-        d_relax_total = sum(d_relax.values())
+        for dest in wg.adj:
+            if dest != source:
+                dijkstra_finder.find_path(source, dest)
+        d_time = (time.time() - d_start) * 1000
 
-        bellman_finder = ShortestPathFinder(wg, BellmanFordPathFinder(k))
+        bellman_finder = ShortestPathFinder(wg, BellmanFordPathFinder(size))
         b_start = time.time()
-        bellman_paths = {node: bellman_finder.find_path(source, node) for node in wg.adj}
+        for dest in wg.adj:
+            if dest != source:
+                bellman_finder.find_path(source, dest)
         b_time = (time.time() - b_start) * 1000
-        b_relax = count_total_relaxations(bellman_paths)
 
         results['dijkstra']['size_time'].append(d_time)
-        results['dijkstra']['size_relax'].append(d_relax_total)
         results['bellman_ford']['size_time'].append(b_time)
-        results['bellman_ford']['size_relax'].append(b_relax)
 
-        print(f"Size {size}: Dijkstra {d_time:.2f}ms, {d_relax_total} relax | Bellman-Ford {b_time:.2f}ms, {b_relax} relax")
+        print(f"Size {size}: Dijkstra {d_time:.2f}ms | Bellman-Ford {b_time:.2f}ms")
 
     print("\nExperiment 2: Varying Graph Density")
     for density in densities:
         raw_graph = generate_random_graph(100, density)
         wg = convert_to_weighted_graph(raw_graph)
         source = 0
-        k = 3
 
         dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder())
         d_start = time.time()
-        d_relax = dijkstra_finder.algorithm.find_shortest_path_k_repeat(wg, source, None, k, repeat=repeat_count)
-        d_time = (time.time() - d_start) / repeat_count * 1000
-        d_relax_total = sum(d_relax.values())
+        for dest in wg.adj:
+            if dest != source:
+                dijkstra_finder.find_path(source, dest)
+        d_time = (time.time() - d_start) * 1000
 
-        bellman_finder = ShortestPathFinder(wg, BellmanFordPathFinder(k))
+        bellman_finder = ShortestPathFinder(wg, BellmanFordPathFinder(100))
         b_start = time.time()
-        bellman_paths = {node: bellman_finder.find_path(source, node) for node in wg.adj}
+        for dest in wg.adj:
+            if dest != source:
+                bellman_finder.find_path(source, dest)
         b_time = (time.time() - b_start) * 1000
-        b_relax = count_total_relaxations(bellman_paths)
 
         results['dijkstra']['density_time'].append(d_time)
-        results['dijkstra']['density_relax'].append(d_relax_total)
         results['bellman_ford']['density_time'].append(b_time)
-        results['bellman_ford']['density_relax'].append(b_relax)
 
-        print(f"Density {density:.1f}: Dijkstra {d_time:.2f}ms, {d_relax_total} relax | Bellman-Ford {b_time:.2f}ms, {b_relax} relax")
+        print(f"Density {density:.1f}: Dijkstra {d_time:.2f}ms | Bellman-Ford {b_time:.2f}ms")
 
     print("\nExperiment 3: Varying k Value (Averaged over trials)")
     trials = 5
     for k in k_values:
         d_time_total = 0
         b_time_total = 0
-        d_relax_total = 0
-        b_relax_total = 0
 
         for _ in range(trials):
             raw_graph = generate_random_graph(100, 0.5)
@@ -451,50 +473,77 @@ def run_experiment():
 
             dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder())
             d_start = time.time()
-            d_relax = dijkstra_finder.algorithm.find_shortest_path_k_repeat(wg, source, None, k, repeat=repeat_count)
-            d_time = (time.time() - d_start) / repeat_count * 1000
-            d_relax_total += sum(d_relax.values())
+            for dest in wg.adj:
+                if dest != source:
+                    dijkstra_finder.find_path(source, dest)
+            d_time = (time.time() - d_start) * 1000
             d_time_total += d_time
 
             bellman_finder = ShortestPathFinder(wg, BellmanFordPathFinder(k))
             b_start = time.time()
-            bellman_paths = {node: bellman_finder.find_path(source, node) for node in wg.adj}
+            for dest in wg.adj:
+                if dest != source:
+                    bellman_finder.find_path(source, dest)
             b_time = (time.time() - b_start) * 1000
-            b_relax = count_total_relaxations(bellman_paths)
-            b_relax_total += b_relax
             b_time_total += b_time
 
         avg_d_time = d_time_total / trials
         avg_b_time = b_time_total / trials
-        avg_d_relax = d_relax_total / trials
-        avg_b_relax = b_relax_total / trials
 
         results['dijkstra']['k_time'].append(avg_d_time)
-        results['dijkstra']['k_relax'].append(avg_d_relax)
         results['bellman_ford']['k_time'].append(avg_b_time)
-        results['bellman_ford']['k_relax'].append(avg_b_relax)
 
-        print(f"k={k}: Dijkstra = {avg_d_time:.2f}ms, relax = {avg_d_relax:.1f} | "
-              f"Bellman-Ford = {avg_b_time:.2f}ms, relax = {avg_b_relax:.1f}")
+        print(f"k={k}: Dijkstra = {avg_d_time:.2f}ms | Bellman-Ford = {avg_b_time:.2f}ms")
 
-    print("\nExperiment 4: Relaxation Count vs k Value")
-    for k in k_values:
-        raw_graph = generate_random_graph(100, 0.5)
+    print("\nExperiment 4: Accuracy Comparison Between Algorithms")
+    accuracy_results = {
+        'dijkstra': {k: {'correct': 0, 'total': 0} for k in accuracy_k_values},
+        'bellman_ford': {k: {'correct': 0, 'total': 0} for k in accuracy_k_values}
+    }
+
+    for _ in range(accuracy_trials):
+        raw_graph = generate_random_graph(graph_size, graph_density)
         wg = convert_to_weighted_graph(raw_graph)
         source = 0
 
-        dijkstra_finder = ShortestPathFinder(wg, DijkstraPathFinder())
-        d_relax = dijkstra_finder.algorithm.find_shortest_path_k_repeat(wg, source, None, k, repeat=repeat_count)
-        d_relax_total = sum(d_relax.values())
+        gt_finder = ShortestPathFinder(wg, DijkstraPathFinder())
+        gt_paths = {}
+        for dest in range(graph_size):
+            if dest == source:
+                continue
+            path = gt_finder.find_path(source, dest)
+            if path:
+                gt_paths[dest] = path
 
-        bellman_finder = ShortestPathFinder(wg, BellmanFordPathFinder(k))
-        bellman_paths = {node: bellman_finder.find_path(source, node) for node in wg.adj}
-        b_relax = count_total_relaxations(bellman_paths)
+        for k in accuracy_k_values:
+            dj_finder = ShortestPathFinder(wg, DijkstraPathFinder())
+            for dest in gt_paths:
+                _, paths, _ = dj_finder.algorithm.find_shortest_path_k(wg, source, dest, k)
+                acc_path = paths.get(dest, [])
+                if acc_path == gt_paths[dest]:
+                    accuracy_results['dijkstra'][k]['correct'] += 1
+                accuracy_results['dijkstra'][k]['total'] += 1
 
-        results['dijkstra']['k_relax_exp4'].append(d_relax_total)
-        results['bellman_ford']['k_relax_exp4'].append(b_relax)
+            bf_finder = ShortestPathFinder(wg, BellmanFordPathFinder(k))
+            for dest in gt_paths:
+                path = bf_finder.find_path(source, dest)
+                if path == gt_paths[dest]:
+                    accuracy_results['bellman_ford'][k]['correct'] += 1
+                accuracy_results['bellman_ford'][k]['total'] += 1
 
-        print(f"k={k}: Dijkstra relax = {d_relax_total}, Bellman-Ford relax = {b_relax}")
+    d_acc = []
+    b_acc = []
+    for k in accuracy_k_values:
+        d = accuracy_results['dijkstra'][k]
+        b = accuracy_results['bellman_ford'][k]
+        d_percent = 100 * d['correct'] / d['total'] if d['total'] else 0
+        b_percent = 100 * b['correct'] / b['total'] if b['total'] else 0
+        d_acc.append(d_percent)
+        b_acc.append(b_percent)
+        print(f"k={k}: Dijkstra Accuracy = {d_percent:.2f}%, Bellman-Ford Accuracy = {b_percent:.2f}%")
+
+    results['dijkstra']['accuracy'] = d_acc
+    results['bellman_ford']['accuracy'] = b_acc
 
     draw_plot(graph_sizes, results['dijkstra']['size_time'], results['bellman_ford']['size_time'],
               "Graph Size (nodes)", "Execution Time (ms)", "Execution Time vs Graph Size")
@@ -505,8 +554,12 @@ def run_experiment():
     draw_plot(k_values, results['dijkstra']['k_time'], results['bellman_ford']['k_time'],
               "k Value", "Execution Time (ms)", "Execution Time vs Relaxation Limit (k)")
 
-    draw_plot(k_values, results['dijkstra']['k_relax_exp4'], results['bellman_ford']['k_relax_exp4'],
-              "k Value", "Relaxation Count", "Total Relaxations vs k Value (Experiment 4)")
+    draw_plot(accuracy_k_values, d_acc, b_acc,
+              "k Value", "Accuracy (%)", "Path Finding Accuracy vs k Value (Experiment 4)")
+
+    return results
+
+
 
 # =============================================================================
 # Experiment Function for Part 5 (with transfers)
