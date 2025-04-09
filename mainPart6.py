@@ -462,6 +462,7 @@ def run_experiment():
         d_time_total = 0
         b_time_total = 0
         d_relax_total = 0
+        b_relax_total = 0
 
         for _ in range(trials):
             raw_graph = generate_random_graph(100, 0.5)
@@ -497,17 +498,29 @@ def run_experiment():
 
         print(f"k={k}: Dijkstra = {avg_d_time:.2f}ms, relax = {avg_d_relax:.1f} | Bellman-Ford = {avg_b_time:.2f}ms")
 
-    print("\nExperiment 4: Accuracy Comparison Between Algorithms")
+    print("\nExperiment 4: Accuracy Comparison Based on Weight Ratio")
+    # Instead of counting correct/total, we accumulate total weights.
     accuracy_results = {
-        'dijkstra': {k: {'correct': 0, 'total': 0, 'relax': 0} for k in accuracy_k_values},
-        'bellman_ford': {k: {'correct': 0, 'total': 0} for k in accuracy_k_values}
+        'dijkstra': {k: {'total_computed_weight': 0.0, 'total_gt_weight': 0.0, 'accuracy_ratio': 0.0} for k in accuracy_k_values},
+        'bellman_ford': {k: {'total_computed_weight': 0.0, 'total_gt_weight': 0.0, 'accuracy_ratio': 0.0} for k in accuracy_k_values}
     }
+
+    def compute_path_weight(graph, path):
+        """Computes the total weight of a path given a WeightedGraph and a list of nodes.
+           Returns 0 if the path is empty or contains a single node."""
+        if not path or len(path) < 2:
+            return 0.0
+        weight = 0.0
+        for i in range(len(path) - 1):
+            weight += graph.get_edge_weight(path[i], path[i+1])
+        return weight
 
     for _ in range(accuracy_trials):
         raw_graph = generate_random_graph(graph_size, graph_density)
         wg = convert_to_weighted_graph(raw_graph)
         source = 0
 
+        # Use full Dijkstra to compute the ground truth for all destinations.
         gt_finder = ShortestPathFinder(wg, DijkstraPathFinder())
         gt_paths = {}
         for dest in range(graph_size):
@@ -518,38 +531,56 @@ def run_experiment():
                 gt_paths[dest] = path
 
         for k in accuracy_k_values:
+            # --- For Dijkstra's k-limited variant ---
             dj_finder = ShortestPathFinder(wg, DijkstraPathFinder())
-            _, all_paths, rel = dj_finder.find_path_k(source, None, k=k)
+            _, all_paths, _ = dj_finder.find_path_k(source, None, k=k)
+            total_computed_weight = 0.0
+            total_gt_weight = 0.0
             for dest in gt_paths:
-                acc_path = all_paths.get(dest, [])
-                if acc_path == gt_paths[dest]:
-                    accuracy_results['dijkstra'][k]['correct'] += 1
-                accuracy_results['dijkstra'][k]['total'] += 1
-                accuracy_results['dijkstra'][k]['relax'] += sum(rel.values())
+                computed_path = all_paths.get(dest, [])
+                gt_path = gt_paths[dest]
+                # Compute weight for each path.
+                computed_weight = compute_path_weight(wg, computed_path)
+                gt_weight = compute_path_weight(wg, gt_path)
+                total_computed_weight += computed_weight
+                total_gt_weight += gt_weight
+            # Calculate the ratio for Dijkstra.
+            accuracy_ratio = total_computed_weight / total_gt_weight if total_gt_weight != 0 else float('inf')
+            accuracy_results['dijkstra'][k]['total_computed_weight'] += total_computed_weight
+            accuracy_results['dijkstra'][k]['total_gt_weight'] += total_gt_weight
+            accuracy_results['dijkstra'][k]['accuracy_ratio'] += accuracy_ratio
 
+            # --- For Bellman-Ford's variant ---
             bf_finder = ShortestPathFinder(wg, BellmanFordPathFinder(k))
+            total_computed_weight_bf = 0.0
+            total_gt_weight_bf = 0.0
             for dest in gt_paths:
-                path = bf_finder.find_path(source, dest)
-                if path == gt_paths[dest]:
-                    accuracy_results['bellman_ford'][k]['correct'] += 1
-                accuracy_results['bellman_ford'][k]['total'] += 1
+                computed_path = bf_finder.find_path(source, dest)
+                gt_path = gt_paths[dest]
+                computed_weight = compute_path_weight(wg, computed_path)
+                gt_weight = compute_path_weight(wg, gt_path)
+                total_computed_weight_bf += computed_weight
+                total_gt_weight_bf += gt_weight
+            accuracy_ratio_bf = total_computed_weight_bf / total_gt_weight_bf if total_gt_weight_bf != 0 else float('inf')
+            accuracy_results['bellman_ford'][k]['total_computed_weight'] += total_computed_weight_bf
+            accuracy_results['bellman_ford'][k]['total_gt_weight'] += total_gt_weight_bf
+            accuracy_results['bellman_ford'][k]['accuracy_ratio'] += accuracy_ratio_bf
 
-    d_acc = []
-    b_acc = []
-    d_relax_list = []
+    d_ratios = []
+    b_ratios = []
     for k in accuracy_k_values:
         d = accuracy_results['dijkstra'][k]
         b = accuracy_results['bellman_ford'][k]
-        d_percent = 100 * d['correct'] / d['total'] if d['total'] else 0
-        b_percent = 100 * b['correct'] / b['total'] if b['total'] else 0
-        d_acc.append(d_percent)
-        b_acc.append(b_percent)
-        d_relax_list.append(d['relax'])
-        print(f"k={k}: Dijkstra Accuracy = {d_percent:.2f}%, {d['relax']} relax | Bellman-Ford Accuracy = {b_percent:.2f}%")
+        # Average the ratio over the number of trials.
+        avg_d_ratio = d['accuracy_ratio'] / accuracy_trials
+        avg_b_ratio = b['accuracy_ratio'] / accuracy_trials
+        d_ratios.append(avg_d_ratio)
+        b_ratios.append(avg_b_ratio)
+        print(f"k={k}: Dijkstra Weight Ratio = {avg_d_ratio:.3f} (computed weight / GT weight) | "
+              f"Bellman-Ford Weight Ratio = {avg_b_ratio:.3f} (computed weight / GT weight)")
 
-    results['dijkstra']['accuracy'] = d_acc
-    results['dijkstra']['accuracy_relax'] = d_relax_list
-    results['bellman_ford']['accuracy'] = b_acc
+    results['dijkstra']['accuracy'] = d_ratios
+    results['bellman_ford']['accuracy'] = b_ratios
 
 
     draw_plot(graph_sizes, results['dijkstra']['size_time'], results['bellman_ford']['size_time'],
@@ -561,7 +592,7 @@ def run_experiment():
     draw_plot(k_values, results['dijkstra']['k_time'], results['bellman_ford']['k_time'],
               "k Value", "Execution Time (ms)", "Execution Time vs Relaxation Limit (k)")
 
-    draw_plot(accuracy_k_values, d_acc, b_acc,
+    draw_plot(accuracy_k_values, d_ratios, b_ratios,
               "k Value", "Accuracy (%)", "Path Finding Accuracy vs k Value (Experiment 4)")
 
     return results
@@ -723,5 +754,6 @@ def experiment_part_5():
 # Main Execution
 # =============================================================================
 if __name__ == "__main__":
-    run_experiment()
-    # experiment_part_5()
+    # run_experiment()
+    experiment_part_5()
+
