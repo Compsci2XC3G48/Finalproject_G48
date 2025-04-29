@@ -754,6 +754,6 @@ def experiment_part_5():
 # Main Execution
 # =============================================================================
 if __name__ == "__main__":
-    # run_experiment()
-    experiment_part_5()
+    run_experiment()
+    # experiment_part_5()
 
